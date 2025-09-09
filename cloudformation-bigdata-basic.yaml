@@ -1,7 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Big Data infrastructure template with S3, DynamoDB, EC2 and IAM roles,
-  ready for Paris region (fr-paris) and validated for cfn-lint.
+  Germain CAIJO - Exercice 1
 
 Parameters:
   Environment:
@@ -98,22 +97,21 @@ Resources:
       IamInstanceProfile: !Ref EC2InstanceProfile
       ImageId: !Ref LatestAmiId
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -eux
-
-          # Mise à jour et installation des packages
-          dnf update -y
-          dnf install -y amazon-cloudwatch-agent jq
-
-          # Fichier test local et copie S3
-          echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
-          aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
-
-          # Variable shell locale pour INSTANCE_ID
-          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-
-          # DynamoDB put-item sur une seule ligne, avec $${INSTANCE_ID} pour échapper à !Sub
-          aws dynamodb put-item \
-            --table-name ${DynamoTableName} \
-            --item '{"pk":{"S":"host#'"$${INSTANCE_ID}"'"},"sk":{"S":"hello#'"$(date +%s)"'"},"msg":{"S":"hello from EC2"}}'
+        Fn::Base64: !Join
+          - ''
+          - - "#!/bin/bash\n"
+            - "set -eux\n"
+            - "dnf update -y\n"
+            - "dnf install -y amazon-cloudwatch-agent jq\n"
+            - "echo \"hello from $(hostname) in "
+            - !Ref AWS::Region
+            - " ("
+            - !Ref Environment
+            - ")\" > /tmp/hello.txt\n"
+            - "aws s3 cp /tmp/hello.txt s3://"
+            - !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
+            - "/hello.txt\n"
+            - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
+            - "aws dynamodb put-item --table-name "
+            - !Ref DynamoTableName
+            - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
