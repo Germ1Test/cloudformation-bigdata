@@ -239,18 +239,25 @@ Resources:
           set -eux
           dnf update -y
           dnf install -y amazon-cloudwatch-agent jq
-          # Write a test file to S3 and a test item to DynamoDB to validate IAM access
+      
+          # Création d’un fichier test local
           echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
+      
+          # Copie du fichier sur S3
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
+      
+          # Récupération de l’ID de l’instance EC2 (variable shell locale)
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+      
+          # Écriture d’un item test dans DynamoDB en utilisant la variable shell
           aws dynamodb put-item \
-          --table-name ${DynamoTableName} \
-          --item !Sub |
-            {
+            --table-name ${DynamoTableName} \
+            --item !Sub |
+              {
                 "pk": {"S": "host#${INSTANCE_ID}"},
                 "sk": {"S": "hello#$(date +%s)"},
                 "msg": {"S": "hello from EC2"}
-            }
+              }
 
 Outputs:
   Region:
@@ -275,4 +282,5 @@ Outputs:
   EC2RoleName:
     Description: Name of the IAM role assumed by the EC2 instance
     Value: !Ref EC2Role
+
 
