@@ -26,13 +26,13 @@ Parameters:
 
 Resources:
 
-  ### S3 Bucket ###
+  # S3 Bucket
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
 
-  ### DynamoDB Table ###
+  # DynamoDB Table
   DynamoTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -49,7 +49,7 @@ Resources:
           KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
 
-  ### IAM Role for EC2 ###
+  # IAM Role for EC2
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
@@ -72,19 +72,23 @@ Resources:
         - !Ref EC2Role
       Path: "/"
 
-  ### Security Group ###
+  # Security Group
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable SSH access
-      VpcId: !Ref "AWS::NoValue" # Default VPC will be used if not specified
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  ### EC2 Instance ###
+  # Latest Amazon Linux 2023 AMI
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64
+
+  # EC2 Instance
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -99,14 +103,20 @@ Resources:
           #!/bin/bash
           set -eux
 
+          # Mise à jour du système et installation des packages
           dnf update -y
           dnf install -y amazon-cloudwatch-agent jq
 
+          # Création d'un fichier test local
           echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
+
+          # Copie du fichier sur S3
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
 
+          # Récupération de l'ID de l'instance EC2 (variable shell locale)
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 
+          # Construction du JSON pour DynamoDB
           JSON_ITEM=$(cat <<EOF
 {
   "pk": {"S": "host#${INSTANCE_ID}"},
@@ -116,6 +126,5 @@ Resources:
 EOF
 )
 
+          # Envoi de l'item dans DynamoDB
           aws dynamodb put-item --table-name ${DynamoTableName} --item "$JSON_ITEM"
-
-  ### Latest Amazon Linux 2023 AMI ###
