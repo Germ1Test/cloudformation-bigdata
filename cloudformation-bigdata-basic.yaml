@@ -106,14 +106,14 @@ Resources:
           dnf update -y
           dnf install -y amazon-cloudwatch-agent jq
 
-          # Fichier test local
+          # Fichier test local et copie S3
           echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
 
-          # Récupération de l'ID de l'instance
+          # Variable shell locale pour INSTANCE_ID
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 
-          # DynamoDB put-item sur une seule ligne (compatible cfn-lint)
+          # DynamoDB put-item sur une seule ligne, avec $${INSTANCE_ID} pour échapper à !Sub
           aws dynamodb put-item \
             --table-name ${DynamoTableName} \
-            --item '{"pk":{"S":"host#'"${INSTANCE_ID}"'"},"sk":{"S":"hello#'"$(date +%s)"'"},"msg":{"S":"hello from EC2"}}'
+            --item '{"pk":{"S":"host#'"$${INSTANCE_ID}"'"},"sk":{"S":"hello#'"$(date +%s)"'"},"msg":{"S":"hello from EC2"}}'
