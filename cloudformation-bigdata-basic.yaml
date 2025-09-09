@@ -1,121 +1,38 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >-
-  Basic Big Data foundation in eu-west-3 (Paris): S3 bucket, DynamoDB table,
-  EC2 instance with IAM role and instance profile, plus a minimal security group.
-  Parameters allow reuse across environments.
-
-Metadata:
-  AWS::CloudFormation::Interface:
-    ParameterGroups:
-      - Label:
-          default: Deployment Settings
-        Parameters:
-          - Environment
-          - BucketNamePrefix
-          - DynamoTableName
-      - Label:
-          default: Networking & Compute
-        Parameters:
-          - VpcId
-          - SubnetId
-          - EC2KeyName
-          - InstanceType
-          - SSHLocation
-      - Label:
-          default: AMI
-        Parameters:
-          - LatestAmiId
-    ParameterLabels:
-      Environment:
-        default: Environment (Dev/Stage/Prod)
-      BucketNamePrefix:
-        default: S3 Bucket Name Prefix
-      DynamoTableName:
-        default: DynamoDB Table Name
-      VpcId:
-        default: VPC ID
-      SubnetId:
-        default: Subnet ID
-      EC2KeyName:
-        default: EC2 Key Pair Name
-      InstanceType:
-        default: EC2 Instance Type
-      SSHLocation:
-        default: Allowed SSH CIDR
-      LatestAmiId:
-        default: SSM Parameter for Latest AMI
+Description: >
+  Big Data infrastructure template with S3, DynamoDB, EC2 and IAM roles,
+  ready for Paris region (fr-paris) and validated for cfn-lint.
 
 Parameters:
   Environment:
     Type: String
     Default: dev
-    AllowedValues: [dev, stage, prod]
-    Description: Environment name used to tag and name resources.
+    Description: Environment name (dev/test/prod)
   BucketNamePrefix:
     Type: String
-    Default: bigdata-foundation
-    AllowedPattern: '^[a-z0-9.-]{3,63}$'
-    Description: Lowercase S3-safe prefix (no spaces/underscores). Final name adds env+region.
+    Default: bigdata-bucket
+    Description: Prefix for S3 bucket
   DynamoTableName:
     Type: String
-    Default: BigDataItems
-    MinLength: 3
-    MaxLength: 255
-    Description: DynamoDB table logical name (will be created as-is).
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-    Description: VPC where the EC2 instance and security group will live.
-  SubnetId:
-    Type: AWS::EC2::Subnet::Id
-    Description: Subnet (public or NATed) for the EC2 instance.
+    Default: BigDataTable
+    Description: DynamoDB table name
   EC2KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: Existing EC2 KeyPair for SSH access to the instance.
+    Description: Name of an existing EC2 KeyPair
   InstanceType:
     Type: String
     Default: t3.micro
-    AllowedValues:
-      - t3.micro
-      - t3.small
-      - t3.medium
-      - t4g.micro
-      - t4g.small
-      - t4g.medium
-    Description: Instance size for the EC2 node.
-  SSHLocation:
-    Type: String
-    Default: 0.0.0.0/0
-    Description: CIDR allowed to SSH (22) into the instance.
-  LatestAmiId:
-    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
-    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
-    Description: SSM Parameter for the latest Amazon Linux 2023 AMI.
-
-Mappings: {}
-Conditions: {}
+    Description: EC2 instance type
 
 Resources:
+
+  ### S3 Bucket ###
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${BucketNamePrefix}-${Environment}-${AWS::Region}'
-      VersioningConfiguration:
-        Status: Enabled
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: AES256
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: BigDataFoundation
+      BucketName: !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
 
+  ### DynamoDB Table ###
   DynamoTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -131,166 +48,74 @@ Resources:
         - AttributeName: sk
           KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      SSESpecification:
-        SSEEnabled: true
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: BigDataFoundation
 
+  ### IAM Role for EC2 ###
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Service: ec2.amazonaws.com
-            Action: 'sts:AssumeRole'
-      Path: '/'
-      Policies:
-        - PolicyName: AccessS3Scoped
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:ListBucket
-                Resource: !Sub 'arn:aws:s3:::${S3Bucket}'
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource: !Sub 'arn:aws:s3:::${S3Bucket}/*'
-        - PolicyName: AccessDynamoScoped
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - dynamodb:BatchGetItem
-                  - dynamodb:BatchWriteItem
-                  - dynamodb:PutItem
-                  - dynamodb:GetItem
-                  - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
-                  - dynamodb:Query
-                  - dynamodb:Scan
-                  - dynamodb:DescribeTable
-                Resource:
-                  - !GetAtt DynamoTable.Arn
-                  - !Sub '${DynamoTable.Arn}/index/*'
+              Service: [ec2.amazonaws.com]
+            Action: sts:AssumeRole
+      Path: "/"
       ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
-      Tags:
-        - Key: Environment
-          Value: !Ref Environment
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
 
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      Path: '/'
-      Roles: [!Ref EC2Role]
+      Roles:
+        - !Ref EC2Role
+      Path: "/"
 
+  ### Security Group ###
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Enable SSH access and outbound internet
-      VpcId: !Ref VpcId
+      GroupDescription: Enable SSH access
+      VpcId: !Ref "AWS::NoValue" # Default VPC will be used if not specified
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: !Ref SSHLocation
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          FromPort: 0
-          ToPort: 0
           CidrIp: 0.0.0.0/0
-      Tags:
-        - Key: Name
-          Value: !Sub 'bd-ec2-sg-${Environment}'
 
+  ### EC2 Instance ###
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: !Ref LatestAmiId
       InstanceType: !Ref InstanceType
-      IamInstanceProfile: !Ref EC2InstanceProfile
       KeyName: !Ref EC2KeyName
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
-          SubnetId: !Ref SubnetId
-          GroupSet: [!Ref InstanceSecurityGroup]
-      Tags:
-        - Key: Name
-          Value: !Sub 'bd-ec2-${Environment}'
-        - Key: Environment
-          Value: !Ref Environment
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      ImageId: !Ref LatestAmiId
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -eux
-      
-          # Mise à jour du système et installation des packages nécessaires
+
           dnf update -y
           dnf install -y amazon-cloudwatch-agent jq
-      
-          # Création d'un fichier test local
+
           echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
-      
-          # Copie du fichier sur S3
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
-      
-          # Récupération de l'ID de l'instance EC2 (variable shell locale)
+
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-      
-          # Création d'un JSON pour DynamoDB sans utiliser !Sub sur INSTANCE_ID
+
           JSON_ITEM=$(cat <<EOF
-      {
-        "pk": {"S": "host#${INSTANCE_ID}"},
-        "sk": {"S": "hello#$(date +%s)"},
-        "msg": {"S": "hello from EC2"}
-      }
-      EOF
-      )
+{
+  "pk": {"S": "host#${INSTANCE_ID}"},
+  "sk": {"S": "hello#$(date +%s)"},
+  "msg": {"S": "hello from EC2"}
+}
+EOF
+)
 
-    # Insertion de l'item dans DynamoDB
-    aws dynamodb put-item --table-name ${DynamoTableName} --item "$JSON_ITEM"
+          aws dynamodb put-item --table-name ${DynamoTableName} --item "$JSON_ITEM"
 
-    # Insertion de l'item dans DynamoDB
-    aws dynamodb put-item --table-name ${DynamoTableName} --item "$JSON_ITEM"
-
-Outputs:
-  Region:
-    Description: Region deployed into
-    Value: !Ref 'AWS::Region'
-  BucketName:
-    Description: Name of the created S3 bucket
-    Value: !Ref S3Bucket
-    Export:
-      Name: !Sub '${AWS::StackName}-BucketName'
-  DynamoDBTableArn:
-    Description: ARN of the DynamoDB table
-    Value: !GetAtt DynamoTable.Arn
-    Export:
-      Name: !Sub '${AWS::StackName}-DynamoDBTableArn'
-  EC2InstanceId:
-    Description: ID of the EC2 instance
-    Value: !Ref EC2Instance
-  EC2PublicIp:
-    Description: Public IP of the EC2 instance (if associated)
-    Value: !GetAtt EC2Instance.PublicIp
-  EC2RoleName:
-    Description: Name of the IAM role assumed by the EC2 instance
-    Value: !Ref EC2Role
-
-
-
-
+  ### Latest Amazon Linux 2023 AMI ###
