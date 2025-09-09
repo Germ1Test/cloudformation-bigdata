@@ -244,8 +244,13 @@ Resources:
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
           aws dynamodb put-item \
-            --table-name ${DynamoTableName} \
-            --item '{"pk":{"S":"host#'"${INSTANCE_ID}"'"},"sk":{"S":"hello#'"$(date +%s)"'"},"msg":{"S":"hello from EC2"}}'
+          --table-name ${DynamoTableName} \
+          --item !Sub |
+            {
+                "pk": {"S": "host#${INSTANCE_ID}"},
+                "sk": {"S": "hello#$(date +%s)"},
+                "msg": {"S": "hello from EC2"}
+            }
 
 Outputs:
   Region:
@@ -270,3 +275,4 @@ Outputs:
   EC2RoleName:
     Description: Name of the IAM role assumed by the EC2 instance
     Value: !Ref EC2Role
+
