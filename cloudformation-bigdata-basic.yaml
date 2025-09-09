@@ -23,6 +23,10 @@ Parameters:
     Type: String
     Default: t3.micro
     Description: EC2 instance type
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64
+    Description: Latest Amazon Linux 2023 AMI
 
 Resources:
 
@@ -83,11 +87,6 @@ Resources:
           ToPort: 22
           CidrIp: 0.0.0.0/0
 
-  # Latest Amazon Linux 2023 AMI
-  LatestAmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64
-
   # EC2 Instance
   EC2Instance:
     Type: AWS::EC2::Instance
@@ -95,7 +94,7 @@ Resources:
       InstanceType: !Ref InstanceType
       KeyName: !Ref EC2KeyName
       SecurityGroupIds:
-        - !Ref InstanceSecurityGroup
+        - !GetAtt InstanceSecurityGroup.GroupId
       IamInstanceProfile: !Ref EC2InstanceProfile
       ImageId: !Ref LatestAmiId
       UserData:
