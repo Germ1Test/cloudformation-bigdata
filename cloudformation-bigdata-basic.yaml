@@ -103,28 +103,18 @@ Resources:
           #!/bin/bash
           set -eux
 
-          # Mise à jour du système et installation des packages
+          # Mise à jour et installation des packages
           dnf update -y
           dnf install -y amazon-cloudwatch-agent jq
 
-          # Création d'un fichier test local
+          # Fichier test local
           echo "hello from $(hostname) in ${AWS::Region} (${Environment})" > /tmp/hello.txt
-
-          # Copie du fichier sur S3
           aws s3 cp /tmp/hello.txt s3://${BucketNamePrefix}-${Environment}-${AWS::Region}/hello.txt
 
-          # Récupération de l'ID de l'instance EC2 (variable shell locale)
+          # Récupération de l'ID de l'instance
           INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 
-          # Construction du JSON pour DynamoDB
-          JSON_ITEM=$(cat <<EOF
-{
-  "pk": {"S": "host#${INSTANCE_ID}"},
-  "sk": {"S": "hello#$(date +%s)"},
-  "msg": {"S": "hello from EC2"}
-}
-EOF
-)
-
-          # Envoi de l'item dans DynamoDB
-          aws dynamodb put-item --table-name ${DynamoTableName} --item "$JSON_ITEM"
+          # DynamoDB put-item sur une seule ligne (compatible cfn-lint)
+          aws dynamodb put-item \
+            --table-name ${DynamoTableName} \
+            --item '{"pk":{"S":"host#'"${INSTANCE_ID}"'"},"sk":{"S":"hello#'"$(date +%s)"'"},"msg":{"S":"hello from EC2"}}'
