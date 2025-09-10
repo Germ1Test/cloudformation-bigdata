@@ -1,103 +1,65 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Germain CAIJO - Exercice 1  
+  Germain CAIJO - Exercice 1 - permettant de :
+    - Créer un bucket S3 fixe : my-bigdata-bucket-fr-paris
+    - Créer une table DynamoDB fixe : BigDataTable
+    - Lancer une instance EC2 t3.micro (Amazon Linux 2023)
+    - Attacher un rôle IAM avec droits S3 et DynamoDB
+    - Ajouter un UserData qui écrit un fichier dans S3 + ajoute un enregistrement dans DynamoDB
 
 Parameters:
-  # Paramètre pour identifier l’environnement (dev, test, prod)
-  Environment:
-    Type: String
-    Default: dev
-    Description: Environment name (dev/test/prod)
-
-  # Préfixe du nom du bucket S3
-  BucketNamePrefix:
-    Type: String
-    Default: bigdata-bucket
-    Description: Prefix for S3 bucket
-
-  # Nom de la table DynamoDB
-  DynamoTableName:
-    Type: String
-    Default: BigDataTable
-    Description: DynamoDB table name
-
-  # Nom d’une paire de clés EC2 existante pour se connecter en SSH
+  # Sert à se connecter à l’instance en SSH
   EC2KeyName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Name of an existing EC2 KeyPair
 
-  # Type d’instance EC2 (modifiable selon les besoins)
-  InstanceType:
-    Type: String
-    Default: t3.micro
-    Description: EC2 instance type
-
-  # AMI Amazon Linux 2023 (via SSM Parameter Store)
-  LatestAmiId:
-    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64
-    Description: Latest Amazon Linux 2023 AMI
-
 Resources:
-
-  # -------------------------------
-  # S3 Bucket pour stocker les fichiers
-  # -------------------------------
+  # 1. S3 Bucket pour stocker les fichiers
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
-
-  # -------------------------------
-  # Table DynamoDB pour stocker des données structurées
-  # -------------------------------
+      BucketName: my-bigdata-bucket-fr-paris
+      
+  # 2. DynamoDB Table NoSQL pour stocker des événements, métadonnées, résultats de traitements
   DynamoTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Ref DynamoTableName
+      TableName: BigDataTable
       AttributeDefinitions:
-        - AttributeName: pk   # Partition Key
+        - AttributeName: pk   # Partition Key (clé primaire)
           AttributeType: S
-        - AttributeName: sk   # Sort Key
+        - AttributeName: sk   # Sort Key (clé de tri)
           AttributeType: S
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
-      BillingMode: PAY_PER_REQUEST  # Pas besoin de provisionner la capacité
+      BillingMode: PAY_PER_REQUEST  # Pas besoin de gérer la capacité, facturation à l’usage
 
-  # -------------------------------
-  # IAM Role pour l’instance EC2
-  # Autorise l’accès à S3 et DynamoDB
-  # -------------------------------
+  # 3. IAM Role pour EC2 pour autoriser l’instance EC2 à accéder à S3 et DynamoDB
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
-      AssumeRolePolicyDocument:     # Autorise EC2 à assumer ce rôle
+      AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
               Service: [ec2.amazonaws.com]
             Action: sts:AssumeRole
-      Path: "/"
-      ManagedPolicyArns:            # Politiques IAM attachées
+      ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
 
-  # Profil d’instance (nécessaire pour associer le rôle à EC2)
+  # Profil d’instance nécessaire pour associer le rôle à EC2
   EC2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      Roles:
-        - !Ref EC2Role
-      Path: "/"
+      Roles: [!Ref EC2Role]
 
-  # -------------------------------
-  # Security Group pour EC2
-  # Autorise uniquement SSH depuis Internet (port 22)
-  # -------------------------------
+  # 4. Security Group pour permettre l’accès SSH à l’instance EC2
+  # ⚠️ Pour plus de sécurité, limiter à votre IP publique au lieu de 0.0.0.0/0
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -106,23 +68,24 @@ Resources:
         - IpProtocol: tcp
           FromPort: 22
           ToPort: 22
-          CidrIp: 0.0.0.0/0   # ⚠️ à restreindre à votre IP pour plus de sécurité
+          CidrIp: 0.0.0.0/0
 
-  # -------------------------------
-  # Instance EC2
-  # - Installe CloudWatch Agent et jq
-  # - Écrit un fichier de test dans S3
-  # - Ajoute un item dans DynamoDB
-  # -------------------------------
+  # 5. Instance EC2
+  # - Type fixé : t3.micro (économique, adapté à un petit POC)
+  # - AMI via SSM Parameter Store (toujours la dernière version d’Amazon Linux 2023)
+  # - UserData :
+  #   * met à jour la machine
+  #   * installe quelques outils
+  #   * écrit un fichier test dans S3
+  #   * enregistre un item dans DynamoDB
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: !Ref InstanceType
+      InstanceType: t3.micro
       KeyName: !Ref EC2KeyName
-      SecurityGroupIds:
-        - !GetAtt InstanceSecurityGroup.GroupId
+      SecurityGroupIds: [!GetAtt InstanceSecurityGroup.GroupId]
       IamInstanceProfile: !Ref EC2InstanceProfile
-      ImageId: !Ref LatestAmiId
+      ImageId: !Ref "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>::/aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64"
       UserData:
         Fn::Base64: !Join
           - ''
@@ -130,19 +93,8 @@ Resources:
             - "set -eux\n"
             - "dnf update -y\n"
             - "dnf install -y amazon-cloudwatch-agent jq\n"
-            # Crée un fichier texte avec un message incluant l’environnement et la région
-            - "echo \"hello from $(hostname) in "
-            - !Ref AWS::Region
-            - " ("
-            - !Ref Environment
-            - ")\" > /tmp/hello.txt\n"
-            # Copie le fichier vers le bucket S3
-            - "aws s3 cp /tmp/hello.txt s3://"
-            - !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
-            - "/hello.txt\n"
-            # Récupère l’ID de l’instance depuis l’instance metadata
+            - "echo \"hello from $(hostname)\" > /tmp/hello.txt\n"
+            - "aws s3 cp /tmp/hello.txt s3://my-bigdata-bucket-fr-paris/hello.txt\n"
             - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
-            # Insère un item dans DynamoDB avec l’ID de l’instance
-            - "aws dynamodb put-item --table-name "
-            - !Ref DynamoTableName
+            - "aws dynamodb put-item --table-name BigDataTable "
             - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
