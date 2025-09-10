@@ -1,19 +1,25 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  Minimal Big Data infrastructure with S3, DynamoDB, and EC2.
-  Simplified version with fixed names (suitable for dev/demo environments).
+  Germain CAIJO - Exercice 1
+    - Creation d'un bucket S3 fixe : my-bigdata-bucket-fr-paris
+    - Creation d'une table DynamoDB fixe : BigDataTable
+    - Lancement d'une instance EC2 t3.micro (Amazon Linux 2023)
+    - Creation d'un rôle IAM avec droits S3 et DynamoDB
+    - Ajout d'un UserData qui :
+    - Écriture d'un fichier dans S3
+    - Ajout d'un enregistrement dans DynamoDB
 
 Parameters:
   # Paramètre obligatoire : nom d’une paire de clés EC2 déjà créée
   # Sert à se connecter à l’instance en SSH
-    EC2KeyName:
-      Type: AWS::EC2::KeyPair::KeyName
-      Description: Name of an existing EC2 KeyPair
+  EC2KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair
     
-    LatestAmiId:
-      Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-      Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
-      Description: Latest Amazon Linux 2023 AMI
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Latest Amazon Linux 2023 AMI
 
 Resources:
 
@@ -116,4 +122,3 @@ Resources:
             - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
             - "aws dynamodb put-item --table-name BigDataTable "
             - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
-
