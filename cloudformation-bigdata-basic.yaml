@@ -71,21 +71,19 @@ Resources:
           CidrIp: 0.0.0.0/0
 
   # 5. Instance EC2
-  # - Type fixé : t3.micro (économique, adapté à un petit POC)
-  # - AMI via SSM Parameter Store (toujours la dernière version d’Amazon Linux 2023)
-  # - UserData :
-  #   * met à jour la machine
-  #   * installe quelques outils
-  #   * écrit un fichier test dans S3
-  #   * enregistre un item dans DynamoDB
+  # - Installe CloudWatch Agent et jq
+  # - Écrit un fichier de test dans S3
+  # - Ajoute un item dans DynamoDB
+  # -------------------------------
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t3.micro
+      InstanceType: !Ref InstanceType
       KeyName: !Ref EC2KeyName
-      SecurityGroupIds: [!GetAtt InstanceSecurityGroup.GroupId]
+      SecurityGroupIds:
+        - !GetAtt InstanceSecurityGroup.GroupId
       IamInstanceProfile: !Ref EC2InstanceProfile
-      ImageId: !Ref "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>::/aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64"
+      ImageId: !Ref LatestAmiId
       UserData:
         Fn::Base64: !Join
           - ''
@@ -93,8 +91,20 @@ Resources:
             - "set -eux\n"
             - "dnf update -y\n"
             - "dnf install -y amazon-cloudwatch-agent jq\n"
-            - "echo \"hello from $(hostname)\" > /tmp/hello.txt\n"
-            - "aws s3 cp /tmp/hello.txt s3://my-bigdata-bucket-fr-paris/hello.txt\n"
+            # Crée un fichier texte avec un message incluant l’environnement et la région
+            - "echo \"hello from $(hostname) in "
+            - !Ref AWS::Region
+            - " ("
+            - !Ref Environment
+            - ")\" > /tmp/hello.txt\n"
+            # Copie le fichier vers le bucket S3
+            - "aws s3 cp /tmp/hello.txt s3://"
+            - !Sub "${BucketNamePrefix}-${Environment}-${AWS::Region}"
+            - "/hello.txt\n"
+            # Récupère l’ID de l’instance depuis l’instance metadata
             - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
-            - "aws dynamodb put-item --table-name BigDataTable "
+            # Insère un item dans DynamoDB avec l’ID de l’instance
+            - "aws dynamodb put-item --table-name "
+            - !Ref DynamoTableName
             - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
+
