@@ -10,7 +10,6 @@ Description: >
     - Ajout d'un enregistrement dans DynamoDB
 
 Parameters:
-  # Paramètre obligatoire : nom d’une paire de clés EC2 déjà créée
   # Sert à se connecter à l’instance en SSH
   EC2KeyName:
     Type: AWS::EC2::KeyPair::KeyName
@@ -23,20 +22,14 @@ Parameters:
 
 Resources:
 
-  # -------------------------------
-  # S3 Bucket
-  # -------------------------------
-  # Sert à stocker les fichiers (données brutes, traitées, logs…)
+  # S3 Bucket : pour stocker les fichiers 
   # Nom fixé pour simplifier le déploiement
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: my-bigdata-bucket-fr-paris
 
-  # -------------------------------
-  # DynamoDB Table
-  # -------------------------------
-  # Table NoSQL pour stocker des événements, métadonnées, résultats de traitements
+  # DynamoDB TablecNoSQL pour stocker des événements, métadonnées, résultats de traitements
   DynamoTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -53,10 +46,7 @@ Resources:
           KeyType: RANGE
       BillingMode: PAY_PER_REQUEST  # Pas besoin de gérer la capacité, facturation à l’usage
 
-  # -------------------------------
-  # IAM Role pour EC2
-  # -------------------------------
-  # Autorise l’instance EC2 à accéder à S3 et DynamoDB
+  # IAM Role pour EC2 pour autoriser l’instance EC2 à accéder à S3 et DynamoDB
   EC2Role:
     Type: AWS::IAM::Role
     Properties:
