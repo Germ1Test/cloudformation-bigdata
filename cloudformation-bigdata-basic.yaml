@@ -9,6 +9,11 @@ Parameters:
   EC2KeyName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Name of an existing EC2 KeyPair
+    
+    LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Latest Amazon Linux 2023 AMI
 
 Resources:
 
@@ -98,7 +103,7 @@ Resources:
       KeyName: !Ref EC2KeyName
       SecurityGroupIds: [!GetAtt InstanceSecurityGroup.GroupId]
       IamInstanceProfile: !Ref EC2InstanceProfile
-      ImageId: !Ref "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>::/aws/service/ami-amazon-linux-latest/amzn2023-ami-kernel-default-x86_64"
+      ImageId: !Ref LatestAmiId   # ✅ utilise le paramètre
       UserData:
         Fn::Base64: !Join
           - ''
