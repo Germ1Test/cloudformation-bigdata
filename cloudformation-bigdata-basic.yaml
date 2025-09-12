@@ -71,7 +71,6 @@ Resources:
   # Security Group
   # -------------------------------
   # Permet l’accès SSH (port 22) à l’instance EC2
-  # ⚠️ Pour plus de sécurité, limiter à votre IP publique au lieu de 0.0.0.0/0
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -83,15 +82,18 @@ Resources:
           CidrIp: 0.0.0.0/0
 
   # -------------------------------
-  # Instance EC2
+  # Instance EC2 : serveur virtuel dans le cloud
   # -------------------------------
-  # - Type fixé : t3.micro (économique, adapté à un petit POC)
-  # - AMI via SSM Parameter Store (toujours la dernière version d’Amazon Linux 2023)
+  # - petit modèle 't3.micro' pour les tests, 
+  #   * avec la clé 'EC2KeyName' pour se connecter
+  #   * le pare-feu 'securityGroup' créé
+  #   * les permissions IAM 'EC2InstanceProfile'
+  #   * le système d'exploitation 'ImageID'
   # - UserData :
-  #   * met à jour la machine
-  #   * installe quelques outils
-  #   * écrit un fichier test dans S3
-  #   * enregistre un item dans DynamoDB
+  #   * mise à jour du système
+  #   * installe quelques outils (cloudwatch, jq)
+  #   * écrit un fichier test "hello.txt" dans S3 
+  #   * enregistre une ligne de test dans DynamoDB
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -99,7 +101,7 @@ Resources:
       KeyName: !Ref EC2KeyName
       SecurityGroupIds: [!GetAtt InstanceSecurityGroup.GroupId]
       IamInstanceProfile: !Ref EC2InstanceProfile
-      ImageId: !Ref LatestAmiId   # ✅ utilise le paramètre
+      ImageId: !Ref LatestAmiId
       UserData:
         Fn::Base64: !Join
           - ''
