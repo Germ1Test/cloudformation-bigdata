@@ -1,0 +1,36 @@
+name: Control EC2 via Lambda
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Action à exécuter sur l'instance EC2 (start ou stop)"
+        required: true
+        default: "stop"
+        type: choice
+        options:
+          - start
+          - stop
+
+jobs:
+  control-ec2:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-3
+
+      - name: Invoke Lambda EC2Scheduler
+        run: |
+          echo "🔹 Exécution de l'action: ${{ github.event.inputs.action }}"
+          aws lambda invoke \
+            --function-name EC2SchedulerLambda \
+            --payload "{\"action\":\"${{ github.event.inputs.action }}\"}" \
+            response.json
+          cat response.json
