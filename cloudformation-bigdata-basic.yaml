@@ -114,3 +114,109 @@ Resources:
             - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
             - "aws dynamodb put-item --table-name BigDataTable "
             - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
+
+  # Rôle IAM pour Lambda (contrôle EC2)
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaEC2Control
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2Instance}
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # Lambda pour start/stop EC2
+  EC2SchedulerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          INSTANCE_ID: !Ref EC2Instance
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          ec2 = boto3.client("ec2")
+          INSTANCE_ID = os.environ.get("INSTANCE_ID")
+
+          def lambda_handler(event, context):
+              action = event.get("action", "").lower()
+              if not INSTANCE_ID:
+                  return {"status": "error", "message": "No INSTANCE_ID"}
+              if action == "stop":
+                  ec2.stop_instances(InstanceIds=[INSTANCE_ID])
+                  return {"status": "success", "message": f"Instance {INSTANCE_ID} stopped"}
+              elif action == "start":
+                  ec2.start_instances(InstanceIds=[INSTANCE_ID])
+                  return {"status": "success", "message": f"Instance {INSTANCE_ID} started"}
+              else:
+                  return {"status": "error", "message": "Invalid action"}
+
+  # Règles EventBridge
+  StopRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: cron(0 22 * * ? *)  # 22h UTC
+      Targets:
+        - Arn: !GetAtt EC2SchedulerLambda.Arn
+          Id: StopTarget
+          Input: '{"action": "stop"}'
+
+  StartRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: cron(0 5 * * ? *)   # 05h UTC
+      Targets:
+        - Arn: !GetAtt EC2SchedulerLambda.Arn
+          Id: StartTarget
+          Input: '{"action": "start"}'
+
+  # Autorisations EventBridge -> Lambda
+  LambdaPermissionStop:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EC2SchedulerLambda
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StopRule.Arn
+
+  LambdaPermissionStart:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref EC2SchedulerLambda
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StartRule.Arn
+
+Outputs:
+  EC2InstanceId:
+    Value: !Ref EC2Instance
+  LambdaName:
+    Value: !Ref EC2SchedulerLambda
+  S3BucketName:
+    Value: !Ref S3Bucket
+  DynamoTableName:
+    Value: !Ref DynamoTable
