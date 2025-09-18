@@ -24,21 +24,20 @@ jobs:
       - name: Test AWS credentials
         run: aws sts get-caller-identity
 
+      # Générer un nom de stack unique
+      - name: Generate unique stack name
+        id: stackname
+        run: |
+          echo "STACK_NAME=bigdata-infra-${GITHUB_RUN_ID}" >> $GITHUB_ENV
+          echo "Generated stack name: $STACK_NAME"
+
       # Déployer le stack CloudFormation
       - name: Deploy CloudFormation stack
         run: |
           set -x  # Affiche chaque commande
-          STACK_NAME=bigdata-infra
           TEMPLATE_FILE=cloudformation-bigdata-basic.yaml
           EC2_KEY_NAME=MaCleEC2   # <-- Remplace par ta clé EC2 existante
-          
-          # Vérifier si le stack existe déjà
-          if aws cloudformation describe-stacks --stack-name $STACK_NAME; then
-            echo "Stack $STACK_NAME existe déjà. Déploiement update..."
-          else
-            echo "Stack $STACK_NAME n'existe pas. Création..."
-          fi
-          
+
           # Déploiement CloudFormation
           aws cloudformation deploy \
             --stack-name $STACK_NAME \
