@@ -7,6 +7,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_REGION: eu-west-3
+
     steps:
       # Checkout du dépôt
       - name: Checkout repository
@@ -18,7 +21,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-3
+          aws-region: ${{ env.AWS_REGION }}
 
       # Vérifier les credentials AWS
       - name: Test AWS credentials
@@ -45,3 +48,12 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --parameter-overrides EC2KeyName=$EC2_KEY_NAME \
             --debug
+            
+      # Afficher les événements CloudFormation en cas d'échec
+      - name: Show CloudFormation events on failure
+        if: failure()
+        run: |
+          echo "Fetching CloudFormation stack events for $STACK_NAME..."
+          aws cloudformation describe-stack-events --stack-name $STACK_NAME \
+            --query 'StackEvents[*].[Timestamp,ResourceType,LogicalResourceId,ResourceStatus,ResourceStatusReason]' \
+            --output table
