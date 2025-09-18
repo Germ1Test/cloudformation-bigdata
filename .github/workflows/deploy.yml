@@ -1,33 +1,48 @@
 name: Deploy CloudFormation
 
 on:
-  workflow_dispatch:   # déclenchement manuel
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
+      # Checkout du dépôt
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Configurer les credentials AWS à partir des secrets GitHub
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-3  # région Paris
+          aws-region: eu-west-3
 
-      # Vérifier que les credentials fonctionnent
+      # Vérifier les credentials AWS
       - name: Test AWS credentials
         run: aws sts get-caller-identity
 
       # Déployer le stack CloudFormation
       - name: Deploy CloudFormation stack
         run: |
-          # Remplace 'MaCleEC2' par le nom exact de ta clé EC2 existante
+          set -x  # Affiche chaque commande
+          STACK_NAME=bigdata-infra
+          TEMPLATE_FILE=cloudformation-bigdata-basic.yaml
+          EC2_KEY_NAME=MaCleEC2   # <-- Remplace par ta clé EC2 existante
+          
+          # Vérifier si le stack existe déjà
+          if aws cloudformation describe-stacks --stack-name $STACK_NAME; then
+            echo "Stack $STACK_NAME existe déjà. Déploiement update..."
+          else
+            echo "Stack $STACK_NAME n'existe pas. Création..."
+          fi
+          
+          # Déploiement CloudFormation
           aws cloudformation deploy \
-            --stack-name bigdata-infra \
-            --template-file cloudformation-bigdata-basic.yaml \
+            --stack-name $STACK_NAME \
+            --template-file $TEMPLATE_FILE \
             --capabilities CAPABILITY_NAMED_IAM \
-            --parameter-overrides EC2KeyName=AKIAWXAYGSWVFSO4QFMK \
+            --parameter-overrides EC2KeyName=$EC2_KEY_NAME \
             --debug
