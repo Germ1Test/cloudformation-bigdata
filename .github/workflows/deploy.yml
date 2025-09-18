@@ -17,9 +17,17 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-west-3  # région Paris
 
+      # Vérifier que les credentials fonctionnent
+      - name: Test AWS credentials
+        run: aws sts get-caller-identity
+
+      # Déployer le stack CloudFormation
       - name: Deploy CloudFormation stack
         run: |
+          # Remplace 'MaCleEC2' par le nom exact de ta clé EC2 existante
           aws cloudformation deploy \
             --stack-name bigdata-infra \
             --template-file cloudformation-bigdata-basic.yaml \
-            --capabilities CAPABILITY_NAMED_IAM
+            --capabilities CAPABILITY_NAMED_IAM \
+            --parameter-overrides EC2KeyName=AKIAWXAYGSWVFSO4QFMK \
+            --debug
