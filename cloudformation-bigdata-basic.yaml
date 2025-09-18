@@ -27,13 +27,13 @@ Resources:
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: my-bigdata-bucket-fr-paris
+      BucketName: !Sub "my-bigdata-bucket-${AWS::StackName}-${AWS::Region}"
 
   # DynamoDB TablecNoSQL pour stocker des événements, métadonnées, résultats de traitements
   DynamoTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: BigDataTable
+      TableName: !Sub "BigDataTable-${AWS::StackName}"
       AttributeDefinitions:
         - AttributeName: pk   # Partition Key (clé primaire)
           AttributeType: S
@@ -103,17 +103,17 @@ Resources:
       IamInstanceProfile: !Ref EC2InstanceProfile
       ImageId: !Ref LatestAmiId
       UserData:
-        Fn::Base64: !Join
-          - ''
-          - - "#!/bin/bash\n"
-            - "set -eux\n"
-            - "dnf update -y\n"
-            - "dnf install -y amazon-cloudwatch-agent jq\n"
-            - "echo \"hello from $(hostname)\" > /tmp/hello.txt\n"
-            - "aws s3 cp /tmp/hello.txt s3://my-bigdata-bucket-fr-paris/hello.txt\n"
-            - "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)\n"
-            - "aws dynamodb put-item --table-name BigDataTable "
-            - " --item '{\"pk\":{\"S\":\"host#'$INSTANCE_ID'\"},\"sk\":{\"S\":\"hello#'$(date +%s)'\"},\"msg\":{\"S\":\"hello from EC2\"}}'\n"
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+          dnf update -y
+          dnf install -y amazon-cloudwatch-agent jq
+          echo "hello from $(hostname)" > /tmp/hello.txt
+          aws s3 cp /tmp/hello.txt s3://${S3Bucket}/hello.txt || true
+          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+          TIMESTAMP=$(date +%s)
+          aws dynamodb put-item --table-name ${DynamoTable} \
+            --item '{"pk":{"S":"host#'"$INSTANCE_ID"'"},"sk":{"S":"hello#'"$TIMESTAMP"'"},"msg":{"S":"hello from EC2"}}' || true
 
   # Rôle IAM pour Lambda (contrôle EC2)
   LambdaExecutionRole:
@@ -138,12 +138,17 @@ Resources:
                 Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2Instance}
               - Effect: Allow
                 Action:
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${EC2Instance}
+              - Effect: Allow
+                Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: "*"
 
-  # Lambda pour start/stop EC2
+   # Lambda pour start/stop EC2
   EC2SchedulerLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -175,11 +180,11 @@ Resources:
               else:
                   return {"status": "error", "message": "Invalid action"}
 
-  # Règles EventBridge
+  # EventBridge Rules
   StopRule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: cron(0 22 * * ? *)  # 22h UTC
+      ScheduleExpression: cron(0 22 * * ? *)
       Targets:
         - Arn: !GetAtt EC2SchedulerLambda.Arn
           Id: StopTarget
@@ -188,13 +193,12 @@ Resources:
   StartRule:
     Type: AWS::Events::Rule
     Properties:
-      ScheduleExpression: cron(0 5 * * ? *)   # 05h UTC
+      ScheduleExpression: cron(0 5 * * ? *)
       Targets:
         - Arn: !GetAtt EC2SchedulerLambda.Arn
           Id: StartTarget
           Input: '{"action": "start"}'
 
-  # Autorisations EventBridge -> Lambda
   LambdaPermissionStop:
     Type: AWS::Lambda::Permission
     Properties:
