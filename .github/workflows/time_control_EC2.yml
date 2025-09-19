@@ -30,7 +30,7 @@ jobs:
         run: |
           echo "🔹 Exécution de l'action: ${{ github.event.inputs.action }}"
           aws lambda invoke \
-            --function-name EC2SchedulerLambda \
+            --function-name bigdata-infra-17835721507-EC2SchedulerLambda-4F5C4pOIRTyK \
             --cli-binary-format raw-in-base64-out \
             --payload "{\"action\":\"${{ github.event.inputs.action }}\"}" \
             response.json
