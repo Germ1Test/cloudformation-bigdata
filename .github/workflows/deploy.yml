@@ -39,7 +39,7 @@ jobs:
         run: |
           set -x  # Affiche chaque commande
           TEMPLATE_FILE=cloudformation-bigdata-basic.yaml
-          EC2_KEY_NAME=MaCleEC2   # <-- Remplace par ta clé EC2 existante
+          EC2_KEY_NAME=MaCleEC2
 
           # Déploiement CloudFormation
           aws cloudformation deploy \
